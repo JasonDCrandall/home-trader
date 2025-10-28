@@ -1,4 +1,5 @@
 """Client for Coinbase Advanced Trade API."""
+
 from __future__ import annotations
 
 import base64
@@ -7,10 +8,13 @@ import hmac
 import json
 import os
 import time
+from dotenv import load_dotenv
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
+
+_ = load_dotenv()
 
 API_BASE_URL = "https://api.coinbase.com/api/v3/brokerage"
 
@@ -33,8 +37,8 @@ class OrderResult:
 
     order_id: str
     status: str
-    filled_size: Optional[float]
-    avg_price: Optional[float]
+    filled_size: float | None
+    avg_price: float | None
 
 
 class CoinbaseClient:
@@ -43,13 +47,15 @@ class CoinbaseClient:
     def __init__(
         self,
         *,
-        api_key: Optional[str] = None,
-        api_secret: Optional[str] = None,
+        api_key: str | None = None,
+        api_secret: str | None = None,
         base_url: str = API_BASE_URL,
     ) -> None:
-        self._api_key = api_key or os.getenv("COINBASE_API_KEY")
-        self._api_secret = api_secret or os.getenv("COINBASE_API_SECRET")
-        self._base_url = base_url.rstrip("/")
+        self._api_key: str | None = api_key or os.getenv("COINBASE_API_KEY")
+        self._api_secret: str | ReadableBuffer | None = api_secret or os.getenv(
+            "COINBASE_API_SECRET"
+        )
+        self._base_url: str = base_url.rstrip("/")
         if not self._api_key or not self._api_secret:
             raise CoinbaseAuthError(
                 "Coinbase API credentials are required. Set COINBASE_API_KEY and COINBASE_API_SECRET."
@@ -58,7 +64,7 @@ class CoinbaseClient:
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
-    def get_accounts(self) -> List[AccountBalance]:
+    def get_accounts(self) -> list[AccountBalance]:
         """Return available account balances."""
         payload = self._request("GET", "/accounts")
         accounts = []
@@ -66,7 +72,9 @@ class CoinbaseClient:
             asset = item.get("asset")
             available = item.get("available_balance", {}).get("value")
             if asset and available is not None:
-                accounts.append(AccountBalance(asset=asset, available_balance=float(available)))
+                accounts.append(
+                    AccountBalance(asset=asset, available_balance=float(available))
+                )
         return accounts
 
     def get_usdc_balance(self) -> float:
@@ -81,10 +89,14 @@ class CoinbaseClient:
         payload = self._request("GET", f"/products/{product_id}/ticker")
         price = payload.get("price")
         if price is None:
-            raise RuntimeError(f"Ticker response missing price for {product_id}: {payload}")
+            raise RuntimeError(
+                f"Ticker response missing price for {product_id}: {payload}"
+            )
         return float(price)
 
-    def place_market_buy(self, product_id: str, quote_size: float, client_order_id: str) -> OrderResult:
+    def place_market_buy(
+        self, product_id: str, quote_size: float, client_order_id: str
+    ) -> OrderResult:
         """Place a market IOC buy order with a quote size in USDC."""
         body = {
             "client_order_id": client_order_id,
@@ -99,7 +111,9 @@ class CoinbaseClient:
         payload = self._request("POST", "/orders", body)
         return self._parse_order_result(payload)
 
-    def place_market_sell(self, product_id: str, base_size: float, client_order_id: str) -> OrderResult:
+    def place_market_sell(
+        self, product_id: str, base_size: float, client_order_id: str
+    ) -> OrderResult:
         """Place a market IOC sell order for a base asset size."""
         body = {
             "client_order_id": client_order_id,
@@ -117,7 +131,7 @@ class CoinbaseClient:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _parse_order_result(self, payload: Dict[str, Any]) -> OrderResult:
+    def _parse_order_result(self, payload: dict[str, Any]) -> OrderResult:
         success = payload.get("success", False)
         if not success:
             raise RuntimeError(f"Order failed: {payload}")
@@ -138,7 +152,9 @@ class CoinbaseClient:
             avg_price=avg_price,
         )
 
-    def _request(self, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _request(
+        self, method: str, path: str, body: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         url = f"{self._base_url}{path}"
         timestamp = str(int(time.time()))
         body_json = json.dumps(body) if body else ""
@@ -155,6 +171,8 @@ class CoinbaseClient:
             "Content-Type": "application/json",
         }
 
-        response = requests.request(method, url, headers=headers, data=body_json if body else None, timeout=30)
+        response = requests.request(
+            method, url, headers=headers, data=body_json if body else None, timeout=30
+        )
         response.raise_for_status()
         return response.json()
