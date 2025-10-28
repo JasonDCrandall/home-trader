@@ -8,6 +8,7 @@ import hmac
 import json
 import os
 import time
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 from dataclasses import dataclass
 from typing import Any
@@ -158,7 +159,12 @@ class CoinbaseClient:
         url = f"{self._base_url}{path}"
         timestamp = str(int(time.time()))
         body_json = json.dumps(body) if body else ""
-        prehash = f"{timestamp}{method.upper()}{path}{body_json}"
+        parsed_url = urlparse(url)
+        request_path = parsed_url.path
+        if parsed_url.query:
+            request_path = f"{request_path}?{parsed_url.query}"
+
+        prehash = f"{timestamp}{method.upper()}{request_path}{body_json}"
         signature = hmac.new(
             base64.b64decode(self._api_secret), prehash.encode(), hashlib.sha256
         ).digest()
